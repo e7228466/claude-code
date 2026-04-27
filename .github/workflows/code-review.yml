@@ -1,0 +1,20 @@
+- name: Run Claude Code review
+        env:
+          CLAUDE_ACCESS_TOKEN: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
+        run: |
+          DIFF=$(cat /tmp/pr.diff)
+          PROMPT=$(cat .claude/review-prompt.md)
+          
+          echo "${PROMPT}" > /tmp/full-prompt.md
+          echo "" >> /tmp/full-prompt.md
+          echo "## PR Diff" >> /tmp/full-prompt.md
+          echo "${DIFF}" >> /tmp/full-prompt.md
+          
+          # Pro トークンで認証して実行
+          export CLAUDE_CODE_USE_BROWSER_AUTH=1
+          export ANTHROPIC_AUTH_TOKEN="${CLAUDE_ACCESS_TOKEN}"
+          
+          claude --print --no-markdown /tmp/full-prompt.md > /tmp/review-result.json || {
+            echo '{"verdict":"error","summary":"Claude Code 実行に失敗しました。","issues":[]}' > /tmp/review-result.json
+          }
+          cat /tmp/review-result.json
