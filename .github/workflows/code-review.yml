@@ -1,20 +1,47 @@
-- name: Run Claude Code review
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Code review
         env:
           CLAUDE_ACCESS_TOKEN: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
         run: |
-          DIFF=$(cat /tmp/pr.diff)
-          PROMPT=$(cat .claude/review-prompt.md)
-          
-          echo "${PROMPT}" > /tmp/full-prompt.md
+          cat .claude/review-prompt.md > /tmp/full-prompt.md
           echo "" >> /tmp/full-prompt.md
           echo "## PR Diff" >> /tmp/full-prompt.md
-          echo "${DIFF}" >> /tmp/full-prompt.md
-          
-          # Pro トークンで認証して実行
-          export CLAUDE_CODE_USE_BROWSER_AUTH=1
+          cat /tmp/pr.diff >> /tmp/full-prompt.md
+
           export ANTHROPIC_AUTH_TOKEN="${CLAUDE_ACCESS_TOKEN}"
-          
-          claude --print --no-markdown /tmp/full-prompt.md > /tmp/review-result.json || {
-            echo '{"verdict":"error","summary":"Claude Code 実行に失敗しました。","issues":[]}' > /tmp/review-result.json
-          }
+
+          claude --print --no-markdown /tmp/full-prompt.md > /tmp/review-result.json || echo '{"verdict":"error","summary":"Claude Code failed","issues":[]}' > /tmp/review-result.json
+
           cat /tmp/review-result.json
+
+      - name: Post review comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/post-comment.sh
